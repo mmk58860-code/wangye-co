@@ -155,6 +155,7 @@ nav { display: grid; gap: 8px; }
 }
 .card.risk-watch { border-color: #e0b667; }
 .card.risk-immune { border-color: #9fc7b7; }
+.card.risk-unknown { border-color: #c9cfcb; }
 .card-head {
   display: flex;
   justify-content: space-between;

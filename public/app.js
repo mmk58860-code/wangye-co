@@ -118,13 +118,25 @@ function renderCards(items) {
         <span class="pill">#${s.netuid}</span>
       </div>
       <div class="kv"><span>Alpha 价格</span><b>${fmt(s.alphaPrice)}</b></div>
-      <div class="kv"><span>注册成本</span><b>${fmt(s.registrationCost, ' TAO')}</b></div>
       <div class="kv"><span>EMA</span><b>${fmt(s.emaPrice)}</b></div>
+      <div class="kv"><span>注册区块</span><b>${s.registrationBlock ?? '--'}</b></div>
+      <div class="kv"><span>免疫剩余</span><b>${immunityText(s)}</b></div>
       <div class="kv"><span>1小时交易量</span><b>${fmt(s.volume1h)}</b></div>
       <div class="kv"><span>24小时交易量</span><b>${fmt(s.volume24h)}</b></div>
-      <div class="kv"><span>赛马状态</span><b>${s.inImmunity ? '免疫期' : '可淘汰'}</b></div>
+      <div class="kv"><span>赛马状态</span><b>${raceText(s)}</b></div>
     </article>
   `).join('');
+}
+
+function raceText(s) {
+  if (!s.immunityKnown) return '待确认';
+  return s.inImmunity ? '保护期' : '可淘汰';
+}
+
+function immunityText(s) {
+  if (!s.immunityKnown) return '--';
+  if (!s.inImmunity) return '已结束';
+  return `${Number(s.remainingImmunityBlocks || 0).toLocaleString('zh-CN')} 块`;
 }
 
 function renderRace(race) {

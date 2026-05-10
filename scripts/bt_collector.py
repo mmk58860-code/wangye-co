@@ -44,6 +44,38 @@ def rpc_request(sub, method, params=None):
         return None
 
 
+def first_attr(obj, names):
+    for name in names:
+        if hasattr(obj, name):
+            value = getattr(obj, name)
+            if value is not None:
+                return value
+    return None
+
+
+def get_immunity_period(sub, netuid):
+    try:
+        return int(sub.immunity_period(netuid))
+    except Exception:
+        pass
+    for method_name in ("get_subnet_hyperparameters", "get_subnet_hyperparams"):
+        try:
+            method = getattr(sub, method_name)
+            params = method(netuid)
+            value = first_attr(params, ("immunity_period", "immunityPeriod"))
+            if value is not None:
+                return int(as_number(value))
+        except Exception:
+            pass
+    try:
+        value = sub.substrate.query("SubtensorModule", "ImmunityPeriod", [netuid])
+        if value is not None:
+            return int(as_number(value))
+    except Exception:
+        pass
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--endpoint", required=True)
@@ -73,17 +105,22 @@ def main():
             if netuid == 0:
                 continue
             if netuid not in immunity_cache:
-                try:
-                    immunity_cache[netuid] = int(sub.immunity_period(netuid))
-                except Exception:
-                    immunity_cache[netuid] = None
+                immunity_cache[netuid] = get_immunity_period(sub, netuid)
+            registration_block = first_attr(item, (
+                "network_registered_at",
+                "registration_block",
+                "registrationBlock",
+                "registered_at",
+                "created_at_block",
+                "createdAtBlock",
+            ))
             subnets.append({
                 "netuid": netuid,
                 "name": human_name(item),
                 "alphaPrice": as_number(getattr(item, "price", None)),
                 "emaPrice": as_number(getattr(item, "moving_price", None)),
                 "registrationCost": registration_cost,
-                "registrationBlock": as_number(getattr(item, "network_registered_at", None)),
+                "registrationBlock": as_number(registration_block),
                 "immunityPeriod": immunity_cache[netuid],
                 "rawVolume": as_number(getattr(item, "subnet_volume", None)),
                 "volume24h": None,

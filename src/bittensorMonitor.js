@@ -163,7 +163,7 @@ export class BittensorMonitor {
         immunityPeriod: data.immunityPeriod ?? null,
         currentBlock: data.currentBlock || null,
         nextPruneCandidate: data.nextPruneCandidate ?? ranked[0]?.netuid ?? null,
-        nonImmuneCount: subnets.filter((s) => !s.inImmunity).length,
+        nonImmuneCount: subnets.filter((s) => s.raceEligible).length,
         lowestEmaRanking: ranked.slice(0, 10).map((s, index) => ({ rank: index + 1, netuid: s.netuid, name: s.name, emaPrice: s.emaPrice })),
         immuneSubnets: immune.map((s) => ({
           netuid: s.netuid,
@@ -296,8 +296,10 @@ function normalizeSubnets(items, registrationCost, immunityPeriod, currentBlock,
     const regBlock = nullableNumber(item.registrationBlock ?? item.registration_block ?? item.createdAtBlock);
     const imm = nullableNumber(item.immunityPeriod ?? item.immunity_period ?? immunityPeriod);
     const end = regBlock != null && imm != null ? regBlock + imm : null;
-    const remaining = end != null ? Math.max(0, end - block) : 0;
-    const inImmunity = remaining > 0;
+    const remaining = end != null ? Math.max(0, end - block) : null;
+    const immunityKnown = end != null && block > 0;
+    const inImmunity = immunityKnown ? remaining > 0 : false;
+    const raceEligible = immunityKnown ? !inImmunity : false;
     return {
       netuid,
       name: item.name || item.subnetName || `Subnet ${netuid}`,
@@ -310,9 +312,10 @@ function normalizeSubnets(items, registrationCost, immunityPeriod, currentBlock,
       immunityPeriod: imm,
       immunityEndsAtBlock: end,
       remainingImmunityBlocks: remaining,
+      immunityKnown,
       inImmunity,
-      raceEligible: !inImmunity,
-      riskLevel: !inImmunity && item.riskLevel ? item.riskLevel : (!inImmunity ? 'watch' : 'immune')
+      raceEligible,
+      riskLevel: immunityKnown ? (inImmunity ? 'immune' : (item.riskLevel || 'watch')) : 'unknown'
     };
   }).filter((item) => Number.isFinite(item.netuid)).sort((a, b) => a.netuid - b.netuid);
 }
