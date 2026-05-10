@@ -104,40 +104,10 @@ export class BittensorMonitor {
   }
 
   async collect() {
-    try {
-      return await this.collectViaRpc();
-    } catch (rpcError) {
-      this.logger.warn('Dwellir RPC 全量采集失败，尝试 Python SDK', { error: rpcError.message });
-      const data = await this.python.collect();
-      const prune = await this.pool.rpc('subnetInfo_getSubnetToPrune').catch(() => null);
-      if (data.nextPruneCandidate == null && prune != null) data.nextPruneCandidate = parseMaybeNumber(prune);
-      return data;
-    }
-  }
-
-  async collectViaRpc() {
-    const [header, dynamicInfo, lockCost, prune] = await Promise.all([
-      this.pool.rpc('chain_getHeader').catch(() => null),
-      this.pool.rpc('subnetInfo_getAllDynamicInfo'),
-      this.pool.rpc('subnetInfo_getLockCost').catch(() => null),
-      this.pool.rpc('subnetInfo_getSubnetToPrune').catch(() => null)
-    ]);
-    if (!Array.isArray(dynamicInfo)) {
-      throw new Error('subnetInfo_getAllDynamicInfo 返回 SCALE 原始数据，改用 Python SDK 解码');
-    }
-    const rawItems = dynamicInfo;
-    if (rawItems.some((item) => !item || typeof item !== 'object')) {
-      throw new Error('subnetInfo_getAllDynamicInfo 返回结构无法直接解析，改用 Python SDK 解码');
-    }
-    if (!rawItems.length) throw new Error('subnetInfo_getAllDynamicInfo 返回为空');
-    const subnets = rawItems.map((item) => normalizeRpcSubnet(item)).filter(Boolean);
-    return {
-      currentBlock: parseMaybeNumber(header?.number) || this.state.currentBlock,
-      registrationCost: asNumber(lockCost),
-      immunityPeriod: subnets.find((s) => s.immunityPeriod != null)?.immunityPeriod ?? null,
-      nextPruneCandidate: parseMaybeNumber(prune),
-      subnets
-    };
+    const data = await this.python.collect();
+    const prune = await this.pool.rpc('subnetInfo_getSubnetToPrune').catch(() => null);
+    if (data.nextPruneCandidate == null && prune != null) data.nextPruneCandidate = parseMaybeNumber(prune);
+    return data;
   }
 
   applyCollected(data) {
@@ -320,35 +290,8 @@ function normalizeSubnets(items, registrationCost, immunityPeriod, currentBlock,
   }).filter((item) => Number.isFinite(item.netuid)).sort((a, b) => a.netuid - b.netuid);
 }
 
-function normalizeRpcSubnet(item) {
-  const netuid = asNumber(firstDefined(item.netuid, item.netUID, item.uid, item.id));
-  if (!Number.isFinite(netuid) || netuid === 0) return null;
-  return {
-    netuid,
-    name: subnetName(item, netuid),
-    alphaPrice: asNumber(firstDefined(item.alphaPrice, item.alpha_price, item.price, item.currentAlphaPrice)),
-    emaPrice: asNumber(firstDefined(item.emaPrice, item.ema_price, item.movingPrice, item.moving_price)),
-    registrationBlock: asNumber(firstDefined(item.registrationBlock, item.registration_block, item.networkRegisteredAt, item.network_registered_at)),
-    immunityPeriod: asNumber(firstDefined(item.immunityPeriod, item.immunity_period)),
-    rawVolume: asNumber(firstDefined(item.rawVolume, item.subnetVolume, item.subnet_volume, item.volume)),
-    symbol: stringifyValue(item.symbol),
-    tempo: asNumber(item.tempo),
-    alphaIn: asNumber(firstDefined(item.alphaIn, item.alpha_in)),
-    alphaOut: asNumber(firstDefined(item.alphaOut, item.alpha_out)),
-    taoIn: asNumber(firstDefined(item.taoIn, item.tao_in))
-  };
-}
-
 function isSubnetLifecycleEvent(method) {
   return /(subnet|network).*(add|added|remove|removed|deregister|prune)|^(SubnetAdded|SubnetRemoved|NetworkAdded|NetworkRemoved|SubnetPruned)$/i.test(method);
-}
-
-function subnetName(item, netuid) {
-  const identity = firstDefined(item.subnetIdentity, item.subnet_identity, item.identity);
-  const identityName = identity && typeof identity === 'object'
-    ? firstDefined(identity.subnetName, identity.subnet_name, identity.name)
-    : null;
-  return stringifyValue(firstDefined(item.name, item.subnetName, item.subnet_name, identityName, item.symbol)) || `Subnet ${netuid}`;
 }
 
 function compareSubnets(a, b, sort) {
@@ -362,35 +305,6 @@ function nullableNumber(value) {
   if (value === null || value === undefined || value === '') return null;
   const n = Number(String(value).replaceAll(',', ''));
   return Number.isFinite(n) ? n : null;
-}
-
-function asNumber(value) {
-  if (value === null || value === undefined || value === '') return null;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (typeof value === 'bigint') return Number(value);
-  if (typeof value === 'string') {
-    const n = value.startsWith('0x') ? Number.parseInt(value, 16) : Number(value.replaceAll(',', ''));
-    return Number.isFinite(n) ? n : null;
-  }
-  if (typeof value === 'object') {
-    if ('value' in value) return asNumber(value.value);
-    if ('bits' in value) return asNumber(value.bits);
-    if ('rao' in value) return asNumber(value.rao);
-    if ('tao' in value) return asNumber(value.tao);
-  }
-  return null;
-}
-
-function firstDefined(...values) {
-  return values.find((value) => value !== null && value !== undefined && value !== '');
-}
-
-function stringifyValue(value) {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'bigint') return String(value);
-  if (typeof value === 'object' && 'value' in value) return stringifyValue(value.value);
-  return '';
 }
 
 function parseMaybeNumber(value) {
