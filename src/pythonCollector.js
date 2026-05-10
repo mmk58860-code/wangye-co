@@ -29,10 +29,11 @@ export class PythonCollector {
       });
       let stdout = '';
       let stderr = '';
+      const timeoutMs = Math.max(180000, Number(cfg.apiPool.timeoutMs || 10000) * 4);
       const timeout = setTimeout(() => {
         child.kill('SIGKILL');
         reject(new Error('Python 采集超时'));
-      }, Math.max(15000, Number(cfg.apiPool.timeoutMs || 10000) * 4));
+      }, timeoutMs);
       child.stdout.on('data', (buf) => { stdout += buf.toString('utf8'); });
       child.stderr.on('data', (buf) => { stderr += buf.toString('utf8'); });
       child.on('close', (code) => {

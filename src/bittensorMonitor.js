@@ -46,6 +46,7 @@ export class BittensorMonitor {
     this.api = null;
     this.lastNetuids = new Set();
     this.volumeHistory = new Map();
+    this.refreshPromise = null;
   }
 
   onUpdate(listener) {
@@ -78,6 +79,14 @@ export class BittensorMonitor {
   }
 
   async refresh(reason = '手动刷新') {
+    if (this.refreshPromise) return this.refreshPromise;
+    this.refreshPromise = this.doRefresh(reason).finally(() => {
+      this.refreshPromise = null;
+    });
+    return this.refreshPromise;
+  }
+
+  async doRefresh(reason = '手动刷新') {
     try {
       const data = await this.collect();
       this.applyCollected(data);
@@ -113,7 +122,13 @@ export class BittensorMonitor {
       this.pool.rpc('subnetInfo_getLockCost').catch(() => null),
       this.pool.rpc('subnetInfo_getSubnetToPrune').catch(() => null)
     ]);
-    const rawItems = Array.isArray(dynamicInfo) ? dynamicInfo : Object.values(dynamicInfo || {});
+    if (!Array.isArray(dynamicInfo)) {
+      throw new Error('subnetInfo_getAllDynamicInfo 返回 SCALE 原始数据，改用 Python SDK 解码');
+    }
+    const rawItems = dynamicInfo;
+    if (rawItems.some((item) => !item || typeof item !== 'object')) {
+      throw new Error('subnetInfo_getAllDynamicInfo 返回结构无法直接解析，改用 Python SDK 解码');
+    }
     if (!rawItems.length) throw new Error('subnetInfo_getAllDynamicInfo 返回为空');
     const subnets = rawItems.map((item) => normalizeRpcSubnet(item)).filter(Boolean);
     return {
@@ -223,7 +238,7 @@ export class BittensorMonitor {
         this.state.lastAlert = payload;
         await this.notifier.alert(`区块 ${blockNumber} 发现子网相关事件：${text}`, payload);
         this.emit('alert');
-        await this.verifySubnetList();
+        if (isSubnetLifecycleEvent(method)) await this.verifySubnetList();
       }
       if (/subtensor|swap/i.test(section) && /(stake|unstake|alpha|swap)/i.test(method)) {
         const data = event.data?.toHuman?.() || event.data?.toString?.();
@@ -319,6 +334,10 @@ function normalizeRpcSubnet(item) {
     alphaOut: asNumber(firstDefined(item.alphaOut, item.alpha_out)),
     taoIn: asNumber(firstDefined(item.taoIn, item.tao_in))
   };
+}
+
+function isSubnetLifecycleEvent(method) {
+  return /(subnet|network).*(add|added|remove|removed|deregister|prune)|^(SubnetAdded|SubnetRemoved|NetworkAdded|NetworkRemoved|SubnetPruned)$/i.test(method);
 }
 
 function subnetName(item, netuid) {
