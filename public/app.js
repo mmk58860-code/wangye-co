@@ -99,7 +99,6 @@ function updateDashboard(data) {
   state.data = data;
   $('#statusLine').textContent = `${data.status === 'ok' ? '已连接' : '等待配置'} · 更新 ${data.updatedAt ? fmtTime(data.updatedAt) : '--'}`;
   $('#statBlock').textContent = data.currentBlock || '--';
-  $('#statCost').textContent = fmt(data.registrationCost, ' TAO');
   $('#statCount').textContent = `${data.race?.currentSubnetCount || data.subnets.length}/${data.race?.maxSubnets || 128}`;
   $('#statFlow').textContent = `${data.chainFlow?.stakeAlphaEvents24h || 0}/${data.chainFlow?.unstakeAlphaEvents24h || 0}`;
   if (data.lastAlert) {
