@@ -1,0 +1,8 @@
+node_modules/
+.env
+data/*.json
+data/*.ndjson
+data/*.tmp
+venv/
+__pycache__/
+*.pyc

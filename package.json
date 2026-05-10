@@ -1,0 +1,22 @@
+{
+  "name": "wangye-co",
+  "version": "0.1.0",
+  "description": "Bittensor TAO subnet monitor dashboard for Dwellir RPC pools.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "@polkadot/api": "^16.4.9",
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-session": "^1.18.2",
+    "ws": "^8.18.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

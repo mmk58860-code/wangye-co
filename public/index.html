@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>wangye-co TAO 子网监控</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <section id="loginView" class="login">
+    <form id="loginForm" class="login-box">
+      <h1>TAO 子网监控</h1>
+      <label>账号<input id="loginUser" autocomplete="username" required></label>
+      <label>密码<input id="loginPass" type="password" autocomplete="current-password" required></label>
+      <button type="submit">登录</button>
+      <p id="loginMsg"></p>
+    </form>
+  </section>
+
+  <main id="appView" class="app hidden">
+    <aside class="sidebar">
+      <div class="brand">
+        <strong>wangye-co</strong>
+        <span>北京时间 <b id="clock">--</b></span>
+      </div>
+      <nav>
+        <button class="nav active" data-page="dashboard">总览</button>
+        <button class="nav" data-page="race">赛马/淘汰风险</button>
+        <button class="nav" data-page="settings">系统设置</button>
+        <button class="nav" data-page="logs">日志</button>
+      </nav>
+      <button id="logoutBtn" class="ghost">退出</button>
+    </aside>
+
+    <section class="content">
+      <header class="topbar">
+        <div>
+          <h2 id="pageTitle">总览</h2>
+          <p id="statusLine">等待数据</p>
+        </div>
+        <div class="actions">
+          <select id="sortSelect" title="卡片排序">
+            <option value="netuid">按 1-128 排序</option>
+            <option value="ema">按 EMA 价格排序</option>
+            <option value="volume1h">按 1小时交易量排序</option>
+            <option value="volume24h">按 24小时交易量排序</option>
+          </select>
+          <button id="refreshBtn">刷新</button>
+        </div>
+      </header>
+
+      <section id="dashboardPage" class="page active">
+        <div class="stats">
+          <div><span>当前区块</span><strong id="statBlock">--</strong></div>
+          <div><span>注册成本</span><strong id="statCost">--</strong></div>
+          <div><span>子网数量</span><strong id="statCount">--</strong></div>
+          <div><span>质押/解质押事件 24h</span><strong id="statFlow">--</strong></div>
+        </div>
+        <div id="alertBox" class="alert hidden"></div>
+        <div id="cards" class="cards"></div>
+      </section>
+
+      <section id="racePage" class="page">
+        <div class="risk-grid">
+          <div class="risk-panel">
+            <h3>赛马状态</h3>
+            <dl id="raceFacts"></dl>
+          </div>
+          <div class="risk-panel">
+            <h3>EMA price 最低排名</h3>
+            <table>
+              <thead><tr><th>排名</th><th>Subnet</th><th>EMA</th></tr></thead>
+              <tbody id="emaRows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="risk-panel">
+          <h3>还在免疫期的 subnet</h3>
+          <table>
+            <thead><tr><th>Subnet</th><th>注册区块</th><th>免疫结束区块</th><th>剩余时间</th></tr></thead>
+            <tbody id="immuneRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="settingsPage" class="page">
+        <form id="settingsForm" class="settings">
+          <h3>API 池</h3>
+          <div class="form-grid">
+            <label>全局每秒请求上限<input name="globalRps" type="number" min="1"></label>
+            <label>请求超时时间 ms<input name="timeoutMs" type="number" min="1000"></label>
+            <label>失败重试次数<input name="retries" type="number" min="0"></label>
+            <label>采集间隔 ms<input name="pollIntervalMs" type="number" min="10000"></label>
+            <label>校验间隔 ms<input name="verifyIntervalMs" type="number" min="30000"></label>
+            <label>单块时间估算 ms<input name="blockTimeMs" type="number" min="1000"></label>
+          </div>
+          <div class="section-head">
+            <h3>Dwellir API</h3>
+            <button id="addApiBtn" type="button">添加 API</button>
+          </div>
+          <div id="apiList" class="api-list"></div>
+
+          <h3>Telegram 推送</h3>
+          <div class="form-grid">
+            <label class="check"><input name="tgEnabled" type="checkbox">启用 TG 机器人</label>
+            <label>Bot Token<input name="botToken" placeholder="123456:ABC..."></label>
+            <label>Chat ID<input name="chatId"></label>
+          </div>
+
+          <h3>网页账号</h3>
+          <div class="form-grid">
+            <label>账号<input name="webUsername"></label>
+            <label>新密码<input name="webPassword" type="password" placeholder="留空则不修改"></label>
+          </div>
+          <button type="submit">保存设置</button>
+          <p id="settingsMsg"></p>
+        </form>
+      </section>
+
+      <section id="logsPage" class="page">
+        <div class="log-tools">
+          <input id="logSearch" placeholder="搜索 24 小时日志">
+          <select id="logLevel">
+            <option value="">全部级别</option>
+            <option value="info">info</option>
+            <option value="warn">warn</option>
+            <option value="error">error</option>
+            <option value="alert">alert</option>
+          </select>
+        </div>
+        <div id="logs" class="logs"></div>
+      </section>
+    </section>
+  </main>
+  <script src="/app.js" defer></script>
+</body>
+</html>
