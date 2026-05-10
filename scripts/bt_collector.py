@@ -76,6 +76,26 @@ def get_immunity_period(sub, netuid):
     return None
 
 
+def get_network_immunity_period(sub):
+    for storage_name in ("NetworkImmunityPeriod", "SubnetImmunityPeriod"):
+        try:
+            value = sub.substrate.query("SubtensorModule", storage_name)
+            if value is not None:
+                parsed = as_number(value)
+                if parsed is not None:
+                    return int(parsed)
+        except Exception:
+            pass
+    for method in ("subnetInfo_getNetworkImmunityPeriod", "subnetInfo_getSubnetImmunityPeriod"):
+        value = rpc_request(sub, method)
+        parsed = as_number(value)
+        if parsed is not None:
+            return int(parsed)
+    # Network subnet deregistration immunity is distinct from miner immunity.
+    # Current Bittensor docs describe this as a four-month protection window.
+    return 864000
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--endpoint", required=True)
@@ -91,6 +111,7 @@ def main():
             registration_cost = as_number(rpc_request(sub, "subnetInfo_getLockCost"))
 
         dynamic = sub.all_subnets() or []
+        network_immunity_period = get_network_immunity_period(sub)
         next_prune = rpc_request(sub, "subnetInfo_getSubnetToPrune")
         if isinstance(next_prune, str):
             try:
@@ -121,7 +142,8 @@ def main():
                 "emaPrice": as_number(getattr(item, "moving_price", None)),
                 "registrationCost": registration_cost,
                 "registrationBlock": as_number(registration_block),
-                "immunityPeriod": immunity_cache[netuid],
+                "immunityPeriod": network_immunity_period,
+                "minerImmunityPeriod": immunity_cache[netuid],
                 "rawVolume": as_number(getattr(item, "subnet_volume", None)),
                 "volume24h": None,
                 "volume1h": None,
@@ -136,7 +158,7 @@ def main():
         output = {
             "currentBlock": current_block,
             "registrationCost": registration_cost,
-            "immunityPeriod": next((s["immunityPeriod"] for s in subnets if s["immunityPeriod"] is not None), None),
+            "immunityPeriod": network_immunity_period,
             "nextPruneCandidate": next_prune,
             "subnets": sorted(subnets, key=lambda x: x["netuid"])
         }
