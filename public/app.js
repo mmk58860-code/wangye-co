@@ -83,6 +83,10 @@ function switchPage(name) {
 
 $('#sortSelect').addEventListener('change', async (event) => {
   state.sort = event.target.value;
+  if (state.data) {
+    renderCards(state.data.subnets || []);
+    return;
+  }
   await loadDashboard();
 });
 
@@ -110,7 +114,7 @@ function updateDashboard(data) {
 }
 
 function renderCards(items) {
-  $('#cards').innerHTML = items.map((s) => `
+  $('#cards').innerHTML = sortSubnets(items, state.sort).map((s) => `
     <article class="card risk-${s.riskLevel}">
       <div class="card-head">
         <h3>${escapeHtml(s.name)}</h3>
@@ -125,6 +129,20 @@ function renderCards(items) {
       <div class="kv"><span>赛马状态</span><b>${raceText(s)}</b></div>
     </article>
   `).join('');
+}
+
+function sortSubnets(items, sort) {
+  return [...items].sort((a, b) => {
+    if (sort === 'ema') return num(a.emaPrice, Infinity) - num(b.emaPrice, Infinity) || num(a.netuid, 0) - num(b.netuid, 0);
+    if (sort === 'volume1h') return num(b.volume1h, -1) - num(a.volume1h, -1) || num(a.netuid, 0) - num(b.netuid, 0);
+    if (sort === 'volume24h') return num(b.volume24h, -1) - num(a.volume24h, -1) || num(a.netuid, 0) - num(b.netuid, 0);
+    return num(a.netuid, 0) - num(b.netuid, 0);
+  });
+}
+
+function num(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 function raceText(s) {
