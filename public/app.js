@@ -107,7 +107,7 @@ function updateDashboard(data) {
   $('#statFlow').textContent = `${data.chainFlow?.stakeAlphaEvents24h || 0}/${data.chainFlow?.unstakeAlphaEvents24h || 0}`;
   if (data.lastAlert) {
     $('#alertBox').classList.remove('hidden');
-    $('#alertBox').textContent = `最近提醒：区块 ${data.lastAlert.blockNumber} ${data.lastAlert.event}`;
+    $('#alertBox').textContent = `最近提醒：区块 ${data.lastAlert.blockNumber} ${data.lastAlert.eventLabel || data.lastAlert.event}`;
   }
   renderCards(data.subnets || []);
   renderRace(data.race || {});

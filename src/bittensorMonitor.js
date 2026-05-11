@@ -200,15 +200,21 @@ export class BittensorMonitor {
       const method = event.method || '';
       const text = `${section}.${method}`;
       if (/subtensor/i.test(section) && /(register|deregister|subnet|network|prune)/i.test(method)) {
+        const translated = translateSubtensorEvent(method, text);
         const payload = {
           blockNumber,
           event: text,
+          eventLabel: translated.label,
           data: event.data?.toHuman?.() || event.data?.toString?.()
         };
-        this.state.lastAlert = payload;
-        await this.notifier.alert(`区块 ${blockNumber} 发现子网相关事件：${text}`, payload);
-        this.emit('alert');
-        if (isSubnetLifecycleEvent(method)) await this.verifySubnetList();
+        if (translated.lifecycle) {
+          this.state.lastAlert = payload;
+          await this.notifier.alert(`区块 ${blockNumber}：${translated.label}`, payload);
+          this.emit('alert');
+          await this.verifySubnetList();
+        } else {
+          this.logger.info(`区块 ${blockNumber}：${translated.label}`, payload);
+        }
       }
       if (/subtensor|swap/i.test(section) && /(stake|unstake|alpha|swap)/i.test(method)) {
         const data = event.data?.toHuman?.() || event.data?.toString?.();
@@ -292,6 +298,17 @@ function normalizeSubnets(items, registrationCost, immunityPeriod, currentBlock,
 
 function isSubnetLifecycleEvent(method) {
   return /(subnet|network).*(add|added|remove|removed|deregister|prune)|^(SubnetAdded|SubnetRemoved|NetworkAdded|NetworkRemoved|SubnetPruned)$/i.test(method);
+}
+
+function translateSubtensorEvent(method, fallback) {
+  const name = String(method || '');
+  if (/NeuronRegistered/i.test(name)) return { label: '子网节点注册', lifecycle: false };
+  if (/NeuronDeregistered|NeuronRemoved/i.test(name)) return { label: '子网节点注销', lifecycle: false };
+  if (/SubnetAdded|NetworkAdded/i.test(name)) return { label: '新子网创建', lifecycle: true };
+  if (/SubnetRemoved|NetworkRemoved/i.test(name)) return { label: '子网移除', lifecycle: true };
+  if (/SubnetPruned|NetworkPruned|Pruned/i.test(name)) return { label: '子网被淘汰', lifecycle: true };
+  if (isSubnetLifecycleEvent(name)) return { label: '子网生命周期变更', lifecycle: true };
+  return { label: fallback, lifecycle: false };
 }
 
 function compareSubnets(a, b, sort) {
