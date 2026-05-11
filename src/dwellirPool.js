@@ -1,15 +1,33 @@
 import { RateLimiter } from './rateLimiter.js';
 
 let rpcId = 1;
+const DWELLIR_HTTP_BASE = 'https://api-bittensor-mainnet.n.dwellir.com';
 
 export function normalizeEndpoint(key) {
-  if (key.endpoint) return key.endpoint.trim();
-  if (key.apiKey) return `https://api-bittensor-mainnet.n.dwellir.com/${key.apiKey.trim()}`;
+  const raw = key.endpoint || key.apiKey || '';
+  const apiKey = extractDwellirApiKey(raw);
+  if (apiKey) return `${DWELLIR_HTTP_BASE}/${apiKey}`;
+  if (key.endpoint) return String(key.endpoint).trim().replace(/^wss:/, 'https:').replace(/^ws:/, 'http:');
   return '';
 }
 
 export function toWsEndpoint(endpoint) {
   return endpoint.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+}
+
+export function extractDwellirApiKey(value = '') {
+  const text = String(value).trim();
+  if (!text || text.includes('******')) return '';
+  const uuid = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  if (uuid) return uuid[0];
+  try {
+    const urlMatch = text.match(/(?:https?|wss?):\/\/[^\s]+/i);
+    const url = new URL(urlMatch ? urlMatch[0] : text);
+    const last = url.pathname.split('/').filter(Boolean).pop();
+    return last && !last.includes('*') ? last.trim() : '';
+  } catch {
+    return text.replace(/^\/+|\/+$/g, '');
+  }
 }
 
 export class DwellirPool {

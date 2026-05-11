@@ -214,14 +214,14 @@ $('#settingsForm').addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
   const keys = [...$('#apiList').querySelectorAll('.api-row')].map((row) => {
-    const endpoint = row.querySelector('[data-field="endpoint"]').value.trim();
-    const isUrl = /^https?:\/\//i.test(endpoint);
+    const input = row.querySelector('[data-field="endpoint"]').value.trim();
+    const apiKey = normalizeDwellirInput(input);
     return {
       id: row.dataset.id,
       enabled: row.querySelector('[data-field="enabled"]').checked,
       name: row.querySelector('[data-field="name"]').value.trim(),
-      endpoint: isUrl ? endpoint : '',
-      apiKey: isUrl ? '' : endpoint,
+      endpoint: apiKey ? `https://api-bittensor-mainnet.n.dwellir.com/${apiKey}` : input,
+      apiKey,
       perSecondLimit: Number(row.querySelector('[data-field="perSecondLimit"]').value)
     };
   });
@@ -280,6 +280,20 @@ function fmt(value, suffix = '') {
   const n = Number(value);
   if (!Number.isFinite(n)) return escapeHtml(String(value));
   return `${n.toLocaleString('zh-CN', { maximumFractionDigits: 8 })}${suffix}`;
+}
+
+function normalizeDwellirInput(value) {
+  const text = String(value || '').trim();
+  if (!text || text.includes('******')) return '';
+  const uuid = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  if (uuid) return uuid[0];
+  try {
+    const urlMatch = text.match(/(?:https?|wss?):\/\/[^\s]+/i);
+    const url = new URL(urlMatch ? urlMatch[0] : text);
+    return url.pathname.split('/').filter(Boolean).pop() || '';
+  } catch {
+    return text.replace(/^\/+|\/+$/g, '');
+  }
 }
 
 function fmtAmount(value) {

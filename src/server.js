@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AppLogger } from './logger.js';
-import { DwellirPool } from './dwellirPool.js';
+import { DwellirPool, extractDwellirApiKey, normalizeEndpoint } from './dwellirPool.js';
 import { BittensorMonitor } from './bittensorMonitor.js';
 import { Notifier } from './notifier.js';
 import { checkPassword, publicConfig, requireAuth } from './auth.js';
@@ -125,12 +125,17 @@ function sanitizeSettings(current, body) {
     next.apiPool.retries = clamp(body.apiPool.retries, 0, 10, current.apiPool.retries);
     next.apiPool.keys = (body.apiPool.keys || []).map((key, index) => {
       const prior = current.apiPool.keys?.find((old) => old.id === key.id) || {};
+      const incoming = key.endpoint && !key.endpoint.includes('******')
+        ? key.endpoint
+        : (key.apiKey && !key.apiKey.includes('******') ? key.apiKey : '');
+      const apiKey = extractDwellirApiKey(incoming) || prior.apiKey || extractDwellirApiKey(prior.endpoint);
+      const endpoint = apiKey ? normalizeEndpoint({ apiKey }) : (prior.endpoint || '');
       return {
         id: key.id || `api-${Date.now()}-${index}`,
         name: key.name || `API ${index + 1}`,
         enabled: key.enabled !== false,
-        endpoint: key.endpoint && !key.endpoint.includes('******') ? String(key.endpoint).trim() : (prior.endpoint || ''),
-        apiKey: key.apiKey && !key.apiKey.includes('******') ? String(key.apiKey).trim() : (prior.apiKey || ''),
+        endpoint,
+        apiKey,
         perSecondLimit: clamp(key.perSecondLimit, 1, 10000, prior.perSecondLimit || 20)
       };
     });
