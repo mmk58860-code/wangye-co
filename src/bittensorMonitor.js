@@ -3,6 +3,8 @@ import { PythonCollector } from './pythonCollector.js';
 import { blocksToDuration } from './time.js';
 import { loadState, saveState } from './storage.js';
 
+const STATE_VERSION = 2;
+
 const ZERO_STATE = {
   status: 'waiting',
   updatedAt: null,
@@ -70,9 +72,9 @@ export class BittensorMonitor {
   }
 
   async start() {
-    await this.refresh('启动采集');
     this.schedule();
     this.connectWs().catch((error) => this.logger.warn('新区块订阅启动失败', { error: error.message }));
+    this.refresh('启动采集').catch((error) => this.recordError(error));
   }
 
   schedule() {
@@ -117,6 +119,9 @@ export class BittensorMonitor {
   }
 
   applyCollected(data) {
+    if (!Array.isArray(data.subnets) || !data.subnets.length) {
+      throw new Error('采集结果为空，保留上次快照');
+    }
     const cfg = this.getConfig().collector;
     const subnets = normalizeSubnets(this.decorateVolumes(data.subnets || []), data.registrationCost, data.immunityPeriod, data.currentBlock, cfg);
     const ranked = [...subnets].filter((s) => s.raceEligible).sort((a, b) => num(a.emaPrice, Infinity) - num(b.emaPrice, Infinity));
@@ -250,13 +255,14 @@ export class BittensorMonitor {
   restoreState() {
     const saved = loadState();
     if (!saved?.state) return;
+    const savedVersion = Number(saved.version || 0);
+    const savedChainFlow = savedVersion >= STATE_VERSION
+      ? saved.state.chainFlow
+      : { ...saved.state.chainFlow, recent: [] };
     this.state = {
       ...structuredClone(ZERO_STATE),
       ...saved.state,
-      chainFlow: this.prunedChainFlowFrom({
-        ...saved.state.chainFlow,
-        recent: []
-      }),
+      chainFlow: this.prunedChainFlowFrom(savedChainFlow),
       errors: []
     };
     this.lastNetuids = new Set((this.state.subnets || []).map((s) => Number(s.netuid)).filter(Number.isFinite));
@@ -264,13 +270,30 @@ export class BittensorMonitor {
   }
 
   persistState() {
+    const previous = loadState();
+    const currentHasRealData = hasRealSubnetData(this.state.subnets);
+    const previousHasRealData = hasRealSubnetData(previous?.state?.subnets);
+    const state = currentHasRealData || !previousHasRealData
+      ? this.state
+      : {
+          ...previous.state,
+          status: this.state.status,
+          currentBlock: this.state.currentBlock || previous.state.currentBlock,
+          updatedAt: this.state.updatedAt || previous.state.updatedAt,
+          chainFlow: this.state.chainFlow,
+          lastAlert: this.state.lastAlert || previous.state.lastAlert,
+          errors: []
+        };
     saveState({
+      version: STATE_VERSION,
       savedAt: new Date().toISOString(),
       state: {
-        ...this.state,
+        ...state,
         errors: []
       },
-      volumeHistory: Object.fromEntries(this.volumeHistory)
+      volumeHistory: currentHasRealData
+        ? Object.fromEntries(this.volumeHistory)
+        : (previous?.volumeHistory || Object.fromEntries(this.volumeHistory))
     });
   }
 
@@ -359,6 +382,14 @@ function normalizeSubnets(items, registrationCost, immunityPeriod, currentBlock,
       riskLevel: immunityKnown ? (inImmunity ? 'immune' : (item.riskLevel || 'watch')) : 'unknown'
     };
   }).filter((item) => Number.isFinite(item.netuid)).sort((a, b) => a.netuid - b.netuid);
+}
+
+function hasRealSubnetData(subnets) {
+  return Array.isArray(subnets) && subnets.some((item) => {
+    if (!item || !Number.isFinite(Number(item.netuid))) return false;
+    if (item.alphaPrice != null || item.emaPrice != null || item.volume1h != null || item.volume24h != null) return true;
+    return typeof item.name === 'string' && !/^Subnet \d+$/i.test(item.name);
+  });
 }
 
 function isSubnetLifecycleEvent(method) {
