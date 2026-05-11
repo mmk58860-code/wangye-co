@@ -24,8 +24,11 @@ const ZERO_STATE = {
   })),
   race: {},
   chainFlow: {
-    stakeAlphaEvents24h: 0,
-    unstakeAlphaEvents24h: 0,
+    stakeTaoToday: 0,
+    unstakeTaoToday: 0,
+    stakeEventsToday: 0,
+    unstakeEventsToday: 0,
+    bjDate: beijingDateKey(Date.now()),
     recent: []
   },
   lastAlert: null,
@@ -217,8 +220,20 @@ export class BittensorMonitor {
         }
       }
       if (/subtensor|swap/i.test(section) && /(stake|unstake|alpha|swap)/i.test(method)) {
-        const data = event.data?.toHuman?.() || event.data?.toString?.();
-        this.state.chainFlow.recent.push({ ts: Date.now(), blockNumber, event: text, data });
+        const human = event.data?.toHuman?.() || event.data?.toString?.();
+        const raw = event.data?.toJSON?.() || human;
+        const flowType = classifyFlowEvent(method);
+        const amountTao = flowType ? extractTaoAmount(raw) : null;
+        this.state.chainFlow.recent.push({
+          ts: Date.now(),
+          bjDate: beijingDateKey(Date.now()),
+          blockNumber,
+          event: text,
+          eventLabel: flowType === 'stake' ? '质押' : (flowType === 'unstake' ? '解质押' : text),
+          flowType,
+          amountTao,
+          data: human
+        });
         this.state.chainFlow = this.prunedChainFlow();
         this.emit('flow');
       }
@@ -226,11 +241,18 @@ export class BittensorMonitor {
   }
 
   prunedChainFlow() {
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    const recent = (this.state.chainFlow?.recent || []).filter((item) => item.ts >= cutoff).slice(-300);
+    const today = beijingDateKey(Date.now());
+    const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+    const recent = (this.state.chainFlow?.recent || []).filter((item) => item.ts >= cutoff).slice(-500);
+    const todayItems = recent.filter((item) => item.bjDate === today);
+    const stakeItems = todayItems.filter((item) => item.flowType === 'stake');
+    const unstakeItems = todayItems.filter((item) => item.flowType === 'unstake');
     return {
-      stakeAlphaEvents24h: recent.filter((item) => /stake|add/i.test(item.event) && !/unstake|remove/i.test(item.event)).length,
-      unstakeAlphaEvents24h: recent.filter((item) => /unstake|remove/i.test(item.event)).length,
+      stakeTaoToday: sumAmounts(stakeItems),
+      unstakeTaoToday: sumAmounts(unstakeItems),
+      stakeEventsToday: stakeItems.length,
+      unstakeEventsToday: unstakeItems.length,
+      bjDate: today,
       recent
     };
   }
@@ -309,6 +331,75 @@ function translateSubtensorEvent(method, fallback) {
   if (/SubnetPruned|NetworkPruned|Pruned/i.test(name)) return { label: '子网被淘汰', lifecycle: true };
   if (isSubnetLifecycleEvent(name)) return { label: '子网生命周期变更', lifecycle: true };
   return { label: fallback, lifecycle: false };
+}
+
+function classifyFlowEvent(method) {
+  const name = String(method || '');
+  if (/unstake|remove/i.test(name)) return 'unstake';
+  if (/stake|add/i.test(name) && !/unstake|remove/i.test(name)) return 'stake';
+  return null;
+}
+
+function extractTaoAmount(value) {
+  const candidates = [];
+  collectBalanceCandidates(value, candidates);
+  const usable = candidates.filter((item) => Number.isFinite(item) && item > 0);
+  if (!usable.length) return null;
+  return Math.max(...usable);
+}
+
+function collectBalanceCandidates(value, out, key = '') {
+  if (value === null || value === undefined) return;
+  if (typeof value === 'number' || typeof value === 'bigint') {
+    const parsed = normalizeTaoNumber(Number(value), key);
+    if (parsed != null) out.push(parsed);
+    return;
+  }
+  if (typeof value === 'string') {
+    const parsed = parseTaoString(value, key);
+    if (parsed != null) out.push(parsed);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectBalanceCandidates(item, out, key);
+    return;
+  }
+  if (typeof value === 'object') {
+    for (const [childKey, childValue] of Object.entries(value)) {
+      collectBalanceCandidates(childValue, out, childKey);
+    }
+  }
+}
+
+function parseTaoString(value, key = '') {
+  const text = value.trim();
+  if (!text || /[a-z0-9]{20,}/i.test(text.replace(/[.,_\-\s]/g, ''))) return null;
+  const match = text.replaceAll(',', '').match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const n = Number(match[0]);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  if (/rao/i.test(text) || /rao/i.test(key)) return n / 1e9;
+  if (/tao|τ/i.test(text) || /tao/i.test(key)) return n;
+  return normalizeTaoNumber(n, key);
+}
+
+function normalizeTaoNumber(value, key = '') {
+  if (!Number.isFinite(value) || value <= 0) return null;
+  if (/netuid|uid|block|height|period|tempo|count|id/i.test(key)) return null;
+  return value > 1e6 ? value / 1e9 : value;
+}
+
+function sumAmounts(items) {
+  return items.reduce((total, item) => total + (Number.isFinite(item.amountTao) ? item.amountTao : 0), 0);
+}
+
+function beijingDateKey(ts) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date(ts));
 }
 
 function compareSubnets(a, b, sort) {

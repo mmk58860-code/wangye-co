@@ -104,7 +104,7 @@ function updateDashboard(data) {
   $('#statusLine').textContent = `${data.status === 'ok' ? '已连接' : '等待配置'} · 更新 ${data.updatedAt ? fmtTime(data.updatedAt) : '--'}`;
   $('#statBlock').textContent = data.currentBlock || '--';
   $('#statCount').textContent = `${data.race?.currentSubnetCount || data.subnets.length}/${data.race?.maxSubnets || 128}`;
-  $('#statFlow').textContent = `${data.chainFlow?.stakeAlphaEvents24h || 0}/${data.chainFlow?.unstakeAlphaEvents24h || 0}`;
+  $('#statFlow').textContent = `${fmtAmount(data.chainFlow?.stakeTaoToday)}/${fmtAmount(data.chainFlow?.unstakeTaoToday)}`;
   if (data.lastAlert) {
     $('#alertBox').classList.remove('hidden');
     $('#alertBox').textContent = `最近提醒：区块 ${data.lastAlert.blockNumber} ${data.lastAlert.eventLabel || data.lastAlert.event}`;
@@ -280,6 +280,11 @@ function fmt(value, suffix = '') {
   const n = Number(value);
   if (!Number.isFinite(n)) return escapeHtml(String(value));
   return `${n.toLocaleString('zh-CN', { maximumFractionDigits: 8 })}${suffix}`;
+}
+
+function fmtAmount(value) {
+  const n = Number(value || 0);
+  return n.toLocaleString('zh-CN', { maximumFractionDigits: 4 });
 }
 
 function fmtTime(value) {
