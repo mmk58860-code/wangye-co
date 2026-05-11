@@ -18,7 +18,8 @@ export function publicConfig(config) {
       keys: (config.apiPool.keys || []).map((key) => ({
         ...key,
         apiKey: key.apiKey ? mask(key.apiKey) : '',
-        endpoint: key.endpoint ? maskEndpoint(key.endpoint) : ''
+        endpoint: key.displayInput || (key.endpoint ? maskEndpoint(key.endpoint) : ''),
+        normalizedEndpoint: key.endpoint ? maskEndpoint(key.endpoint) : ''
       }))
     },
     collector: config.collector,
