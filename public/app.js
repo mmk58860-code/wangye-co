@@ -125,7 +125,6 @@ function renderCards(items) {
       <div class="kv"><span>免疫剩余</span><b>${immunityText(s)}</b></div>
       <div class="kv"><span>1小时交易量</span><b>${fmt(s.volume1h)}</b></div>
       <div class="kv"><span>24小时交易量</span><b>${fmt(s.volume24h)}</b></div>
-      <div class="kv"><span>赛马状态</span><b>${raceText(s)}</b></div>
     </article>
   `).join('');
 }
@@ -142,11 +141,6 @@ function sortSubnets(items, sort) {
 function num(value, fallback) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
-}
-
-function raceText(s) {
-  if (!s.immunityKnown) return '待确认';
-  return s.inImmunity ? '保护期' : '可淘汰';
 }
 
 function immunityText(s) {
