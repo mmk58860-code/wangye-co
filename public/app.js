@@ -121,6 +121,7 @@ function renderCards(items) {
         <span class="pill">#${s.netuid}</span>
       </div>
       <div class="kv"><span>Alpha 价格</span><b>${fmt(s.alphaPrice)}</b></div>
+      <div class="kv"><span>当前市值</span><b>${fmt(s.marketCap, ' TAO')}</b></div>
       <div class="kv"><span>1小时交易量</span><b>${fmt(s.volume1h)}</b></div>
       <div class="kv"><span>24小时交易量</span><b>${fmt(s.volume24h)}</b></div>
     </article>

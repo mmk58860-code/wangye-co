@@ -369,6 +369,8 @@ function normalizeSubnets(items, registrationCost, immunityPeriod, currentBlock,
       netuid,
       name: item.name || item.subnetName || `Subnet ${netuid}`,
       alphaPrice: nullableNumber(item.alphaPrice ?? item.alpha_price ?? item.price),
+      marketCap: nullableNumber(item.marketCap ?? item.market_cap ?? item.marketCapTao ?? item.market_cap_tao)
+        ?? computeMarketCap(item),
       registrationCost: nullableNumber(item.registrationCost ?? item.registration_cost ?? registrationCost),
       emaPrice: nullableNumber(item.emaPrice ?? item.ema_price ?? item.moving_price),
       volume1h: nullableNumber(item.volume1h ?? item.volume_1h),
@@ -385,10 +387,19 @@ function normalizeSubnets(items, registrationCost, immunityPeriod, currentBlock,
   }).filter((item) => Number.isFinite(item.netuid)).sort((a, b) => a.netuid - b.netuid);
 }
 
+function computeMarketCap(item) {
+  const price = nullableNumber(item.alphaPrice ?? item.alpha_price ?? item.price);
+  const alphaIn = nullableNumber(item.alphaIn ?? item.alpha_in);
+  const alphaOut = nullableNumber(item.alphaOut ?? item.alpha_out);
+  const supply = (alphaIn != null ? alphaIn : 0) + (alphaOut != null ? alphaOut : 0);
+  if (!Number.isFinite(price) || !Number.isFinite(supply) || supply <= 0) return null;
+  return price * supply;
+}
+
 function hasRealSubnetData(subnets) {
   return Array.isArray(subnets) && subnets.some((item) => {
     if (!item || !Number.isFinite(Number(item.netuid))) return false;
-    if (item.alphaPrice != null || item.emaPrice != null || item.volume1h != null || item.volume24h != null) return true;
+    if (item.alphaPrice != null || item.marketCap != null || item.emaPrice != null || item.volume1h != null || item.volume24h != null) return true;
     return typeof item.name === 'string' && !/^Subnet \d+$/i.test(item.name);
   });
 }
