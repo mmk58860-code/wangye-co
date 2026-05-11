@@ -251,7 +251,10 @@ export class BittensorMonitor {
     this.state = {
       ...structuredClone(ZERO_STATE),
       ...saved.state,
-      chainFlow: this.prunedChainFlowFrom(saved.state.chainFlow),
+      chainFlow: this.prunedChainFlowFrom({
+        ...saved.state.chainFlow,
+        recent: (saved.state.chainFlow?.recent || []).map((item) => ({ ...item, amountTao: null }))
+      }),
       errors: []
     };
     this.lastNetuids = new Set((this.state.subnets || []).map((s) => Number(s.netuid)).filter(Number.isFinite));
@@ -280,11 +283,16 @@ export class BittensorMonitor {
     const todayItems = recent.filter((item) => item.bjDate === today);
     const stakeItems = todayItems.filter((item) => item.flowType === 'stake');
     const unstakeItems = todayItems.filter((item) => item.flowType === 'unstake');
+    const stakeKnown = stakeItems.filter((item) => Number.isFinite(item.amountTao)).length;
+    const unstakeKnown = unstakeItems.filter((item) => Number.isFinite(item.amountTao)).length;
     return {
       stakeTaoToday: sumAmounts(stakeItems),
       unstakeTaoToday: sumAmounts(unstakeItems),
       stakeEventsToday: stakeItems.length,
       unstakeEventsToday: unstakeItems.length,
+      stakeAmountEventsToday: stakeKnown,
+      unstakeAmountEventsToday: unstakeKnown,
+      amountReliable: stakeKnown === stakeItems.length && unstakeKnown === unstakeItems.length,
       bjDate: today,
       recent
     };
@@ -378,7 +386,7 @@ function extractTaoAmount(value) {
   collectBalanceCandidates(value, candidates);
   const usable = candidates.filter((item) => Number.isFinite(item) && item > 0);
   if (!usable.length) return null;
-  return Math.max(...usable);
+  return usable.reduce((total, item) => total + item, 0);
 }
 
 function collectBalanceCandidates(value, out, key = '') {
@@ -413,13 +421,19 @@ function parseTaoString(value, key = '') {
   if (!Number.isFinite(n) || n <= 0) return null;
   if (/rao/i.test(text) || /rao/i.test(key)) return n / 1e9;
   if (/tao|τ/i.test(text) || /tao/i.test(key)) return n;
-  return normalizeTaoNumber(n, key);
+  if (isAmountKey(key)) return normalizeTaoNumber(n, key);
+  return null;
 }
 
 function normalizeTaoNumber(value, key = '') {
   if (!Number.isFinite(value) || value <= 0) return null;
   if (/netuid|uid|block|height|period|tempo|count|id/i.test(key)) return null;
+  if (!isAmountKey(key)) return null;
   return value > 1e6 ? value / 1e9 : value;
+}
+
+function isAmountKey(key = '') {
+  return /amount|balance|tao|rao|stake|staked|unstake|unstaked|value/i.test(key);
 }
 
 function sumAmounts(items) {

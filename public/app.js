@@ -104,7 +104,7 @@ function updateDashboard(data) {
   $('#statusLine').textContent = `${data.status === 'ok' ? '已连接' : '等待配置'} · 更新 ${data.updatedAt ? fmtTime(data.updatedAt) : '--'}`;
   $('#statBlock').textContent = data.currentBlock || '--';
   $('#statCount').textContent = `${data.race?.currentSubnetCount || data.subnets.length}/${data.race?.maxSubnets || 128}`;
-  $('#statFlow').textContent = `${fmtAmount(data.chainFlow?.stakeTaoToday)}/${fmtAmount(data.chainFlow?.unstakeTaoToday)}`;
+  $('#statFlow').textContent = flowText(data.chainFlow);
   if (data.lastAlert) {
     $('#alertBox').classList.remove('hidden');
     $('#alertBox').textContent = `最近提醒：区块 ${data.lastAlert.blockNumber} ${data.lastAlert.eventLabel || data.lastAlert.event}`;
@@ -299,6 +299,12 @@ function normalizeDwellirInput(value) {
 function fmtAmount(value) {
   const n = Number(value || 0);
   return n.toLocaleString('zh-CN', { maximumFractionDigits: 4 });
+}
+
+function flowText(flow = {}) {
+  const value = `${fmtAmount(flow.stakeTaoToday)}/${fmtAmount(flow.unstakeTaoToday)}`;
+  if (flow.amountReliable === false) return `${value}（部分金额未识别）`;
+  return value;
 }
 
 function fmtTime(value) {
