@@ -1,6 +1,7 @@
 import { ApiPromise, WsProvider } from '@polkadot/api';
 import { PythonCollector } from './pythonCollector.js';
 import { blocksToDuration } from './time.js';
+import { loadState, saveState } from './storage.js';
 
 const ZERO_STATE = {
   status: 'waiting',
@@ -50,6 +51,7 @@ export class BittensorMonitor {
     this.lastNetuids = new Set();
     this.volumeHistory = new Map();
     this.refreshPromise = null;
+    this.restoreState();
   }
 
   onUpdate(listener) {
@@ -97,6 +99,7 @@ export class BittensorMonitor {
         block: this.state.currentBlock,
         subnetCount: this.state.race.currentSubnetCount
       });
+      this.persistState();
       this.emit('refresh');
     } catch (error) {
       this.recordError(error);
@@ -212,6 +215,7 @@ export class BittensorMonitor {
         };
         if (translated.lifecycle) {
           this.state.lastAlert = payload;
+          this.persistState();
           await this.notifier.alert(`区块 ${blockNumber}：${translated.label}`, payload);
           this.emit('alert');
           await this.verifySubnetList();
@@ -235,15 +239,44 @@ export class BittensorMonitor {
           data: human
         });
         this.state.chainFlow = this.prunedChainFlow();
+        this.persistState();
         this.emit('flow');
       }
     }
   }
 
+  restoreState() {
+    const saved = loadState();
+    if (!saved?.state) return;
+    this.state = {
+      ...structuredClone(ZERO_STATE),
+      ...saved.state,
+      chainFlow: this.prunedChainFlowFrom(saved.state.chainFlow),
+      errors: []
+    };
+    this.lastNetuids = new Set((this.state.subnets || []).map((s) => Number(s.netuid)).filter(Number.isFinite));
+    this.volumeHistory = new Map(Object.entries(saved.volumeHistory || {}).map(([key, value]) => [Number(key), value]));
+  }
+
+  persistState() {
+    saveState({
+      savedAt: new Date().toISOString(),
+      state: {
+        ...this.state,
+        errors: []
+      },
+      volumeHistory: Object.fromEntries(this.volumeHistory)
+    });
+  }
+
   prunedChainFlow() {
+    return this.prunedChainFlowFrom(this.state.chainFlow);
+  }
+
+  prunedChainFlowFrom(chainFlow) {
     const today = beijingDateKey(Date.now());
     const cutoff = Date.now() - 48 * 60 * 60 * 1000;
-    const recent = (this.state.chainFlow?.recent || []).filter((item) => item.ts >= cutoff).slice(-500);
+    const recent = (chainFlow?.recent || []).filter((item) => item.ts >= cutoff).slice(-500);
     const todayItems = recent.filter((item) => item.bjDate === today);
     const stakeItems = todayItems.filter((item) => item.flowType === 'stake');
     const unstakeItems = todayItems.filter((item) => item.flowType === 'unstake');

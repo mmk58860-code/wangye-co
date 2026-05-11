@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 export const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const dataDir = path.join(rootDir, 'data');
 export const configPath = path.join(dataDir, 'config.json');
+export const statePath = path.join(dataDir, 'state.json');
 
 const defaultHash = bcrypt.hashSync('admin123', 10);
 
@@ -67,4 +68,21 @@ export function saveConfig(config) {
   const tmp = `${configPath}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(config, null, 2), 'utf8');
   fs.renameSync(tmp, configPath);
+}
+
+export function loadState() {
+  ensureDataDir();
+  if (!fs.existsSync(statePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(statePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+export function saveState(state) {
+  ensureDataDir();
+  const tmp = `${statePath}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf8');
+  fs.renameSync(tmp, statePath);
 }
