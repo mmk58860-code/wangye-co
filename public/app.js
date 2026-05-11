@@ -121,8 +121,6 @@ function renderCards(items) {
         <span class="pill">#${s.netuid}</span>
       </div>
       <div class="kv"><span>Alpha 价格</span><b>${fmt(s.alphaPrice)}</b></div>
-      <div class="kv"><span>EMA</span><b>${fmt(s.emaPrice)}</b></div>
-      <div class="kv"><span>免疫剩余</span><b>${immunityText(s)}</b></div>
       <div class="kv"><span>1小时交易量</span><b>${fmt(s.volume1h)}</b></div>
       <div class="kv"><span>24小时交易量</span><b>${fmt(s.volume24h)}</b></div>
     </article>
@@ -131,7 +129,6 @@ function renderCards(items) {
 
 function sortSubnets(items, sort) {
   return [...items].sort((a, b) => {
-    if (sort === 'ema') return num(a.emaPrice, Infinity) - num(b.emaPrice, Infinity) || num(a.netuid, 0) - num(b.netuid, 0);
     if (sort === 'volume1h') return num(b.volume1h, -1) - num(a.volume1h, -1) || num(a.netuid, 0) - num(b.netuid, 0);
     if (sort === 'volume24h') return num(b.volume24h, -1) - num(a.volume24h, -1) || num(a.netuid, 0) - num(b.netuid, 0);
     return num(a.netuid, 0) - num(b.netuid, 0);
@@ -141,12 +138,6 @@ function sortSubnets(items, sort) {
 function num(value, fallback) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
-}
-
-function immunityText(s) {
-  if (!s.immunityKnown) return '--';
-  if (!s.inImmunity) return '已结束';
-  return `${Number(s.remainingImmunityBlocks || 0).toLocaleString('zh-CN')} 块`;
 }
 
 function renderRace(race) {
