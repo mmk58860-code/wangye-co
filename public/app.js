@@ -122,7 +122,6 @@ function renderCards(items) {
       </div>
       <div class="kv"><span>Alpha 价格</span><b>${fmt(s.alphaPrice)}</b></div>
       <div class="kv"><span>EMA</span><b>${fmt(s.emaPrice)}</b></div>
-      <div class="kv"><span>注册区块</span><b>${s.registrationBlock ?? '--'}</b></div>
       <div class="kv"><span>免疫剩余</span><b>${immunityText(s)}</b></div>
       <div class="kv"><span>1小时交易量</span><b>${fmt(s.volume1h)}</b></div>
       <div class="kv"><span>24小时交易量</span><b>${fmt(s.volume24h)}</b></div>
