@@ -3,7 +3,8 @@ import { PythonCollector } from './pythonCollector.js';
 import { blocksToDuration } from './time.js';
 import { loadState, saveState } from './storage.js';
 
-const STATE_VERSION = 2;
+const STATE_VERSION = 3;
+const MAX_FLOW_TAO_PER_EVENT = 100000;
 
 const ZERO_STATE = {
   status: 'waiting',
@@ -228,7 +229,7 @@ export class BittensorMonitor {
           this.logger.info(`区块 ${blockNumber}：${translated.label}`, payload);
         }
       }
-      if (/subtensor|swap/i.test(section) && /(stake|unstake|alpha|swap)/i.test(method)) {
+      if (/^subtensor(Module)?$/i.test(section) && /^(StakeAdded|StakeRemoved|StakeSwapped)$/i.test(method)) {
         const human = event.data?.toHuman?.() || event.data?.toString?.();
         const raw = event.data?.toJSON?.() || human;
         const flow = flowFromStakeEvent(method, raw);
@@ -255,14 +256,10 @@ export class BittensorMonitor {
   restoreState() {
     const saved = loadState();
     if (!saved?.state) return;
-    const savedVersion = Number(saved.version || 0);
-    const savedChainFlow = savedVersion >= STATE_VERSION
-      ? saved.state.chainFlow
-      : { ...saved.state.chainFlow, recent: [] };
     this.state = {
       ...structuredClone(ZERO_STATE),
       ...saved.state,
-      chainFlow: this.prunedChainFlowFrom(savedChainFlow),
+      chainFlow: this.prunedChainFlowFrom(saved.state.chainFlow),
       errors: []
     };
     this.lastNetuids = new Set((this.state.subnets || []).map((s) => Number(s.netuid)).filter(Number.isFinite));
@@ -304,7 +301,11 @@ export class BittensorMonitor {
   prunedChainFlowFrom(chainFlow) {
     const today = beijingDateKey(Date.now());
     const cutoff = Date.now() - 48 * 60 * 60 * 1000;
-    const recent = (chainFlow?.recent || []).filter((item) => item.ts >= cutoff).slice(-500);
+    const recent = (chainFlow?.recent || [])
+      .filter((item) => item.ts >= cutoff)
+      .map(normalizeFlowItem)
+      .filter(Boolean)
+      .slice(-500);
     const todayItems = recent.filter((item) => item.bjDate === today);
     const stakeItems = todayItems.filter((item) => item.flowType === 'stake');
     const unstakeItems = todayItems.filter((item) => item.flowType === 'unstake');
@@ -412,33 +413,40 @@ function flowFromStakeEvent(method, data) {
   if (/^StakeAdded$/i.test(name)) {
     const netuid = eventNumber(data, 4, 'netuid');
     if (isRootNetuid(netuid)) return null;
-    return {
-      flowType: 'stake',
-      amountTao: eventTao(data, 2, 'tao_amount'),
-      netuid
-    };
+    return buildFlow('stake', eventTao(data, 2, 'tao_amount'), netuid);
   }
   if (/^StakeRemoved$/i.test(name)) {
     const netuid = eventNumber(data, 4, 'netuid');
     if (isRootNetuid(netuid)) return null;
-    return {
-      flowType: 'unstake',
-      amountTao: eventTao(data, 2, 'tao_amount'),
-      netuid
-    };
+    return buildFlow('unstake', eventTao(data, 2, 'tao_amount'), netuid);
   }
   if (/^StakeSwapped$/i.test(name)) {
     const origin = eventNumber(data, 2, 'origin_netuid');
     const destination = eventNumber(data, 3, 'destination_netuid');
     const amountTao = eventTao(data, 4, 'tao_amount');
     if (isRootNetuid(origin) && !isRootNetuid(destination)) {
-      return { flowType: 'stake', amountTao, netuid: destination };
+      return buildFlow('stake', amountTao, destination);
     }
     if (!isRootNetuid(origin) && isRootNetuid(destination)) {
-      return { flowType: 'unstake', amountTao, netuid: origin };
+      return buildFlow('unstake', amountTao, origin);
     }
   }
   return null;
+}
+
+function buildFlow(flowType, amountTao, netuid) {
+  if (!Number.isFinite(amountTao) || amountTao <= 0 || amountTao > MAX_FLOW_TAO_PER_EVENT) return null;
+  if (!Number.isFinite(Number(netuid)) || isRootNetuid(netuid)) return null;
+  return { flowType, amountTao, netuid: Number(netuid) };
+}
+
+function normalizeFlowItem(item) {
+  if (!item || !['stake', 'unstake'].includes(item.flowType)) return null;
+  const amountTao = Number(item.amountTao);
+  const netuid = Number(item.netuid);
+  if (!Number.isFinite(amountTao) || amountTao <= 0 || amountTao > MAX_FLOW_TAO_PER_EVENT) return null;
+  if (!Number.isFinite(netuid) || isRootNetuid(netuid)) return null;
+  return { ...item, amountTao, netuid };
 }
 
 function eventTao(data, index, key) {
