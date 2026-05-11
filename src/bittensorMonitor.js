@@ -226,21 +226,23 @@ export class BittensorMonitor {
       if (/subtensor|swap/i.test(section) && /(stake|unstake|alpha|swap)/i.test(method)) {
         const human = event.data?.toHuman?.() || event.data?.toString?.();
         const raw = event.data?.toJSON?.() || human;
-        const flowType = classifyFlowEvent(method);
-        const amountTao = flowType ? extractTaoAmount(raw) : null;
-        this.state.chainFlow.recent.push({
-          ts: Date.now(),
-          bjDate: beijingDateKey(Date.now()),
-          blockNumber,
-          event: text,
-          eventLabel: flowType === 'stake' ? '质押' : (flowType === 'unstake' ? '解质押' : text),
-          flowType,
-          amountTao,
-          data: human
-        });
-        this.state.chainFlow = this.prunedChainFlow();
-        this.persistState();
-        this.emit('flow');
+        const flow = flowFromStakeEvent(method, raw);
+        if (flow) {
+          this.state.chainFlow.recent.push({
+            ts: Date.now(),
+            bjDate: beijingDateKey(Date.now()),
+            blockNumber,
+            event: text,
+            eventLabel: flow.flowType === 'stake' ? '买入/质押' : '卖出/解质押',
+            flowType: flow.flowType,
+            amountTao: flow.amountTao,
+            netuid: flow.netuid,
+            data: human
+          });
+          this.state.chainFlow = this.prunedChainFlow();
+          this.persistState();
+          this.emit('flow');
+        }
       }
     }
   }
@@ -253,7 +255,7 @@ export class BittensorMonitor {
       ...saved.state,
       chainFlow: this.prunedChainFlowFrom({
         ...saved.state.chainFlow,
-        recent: (saved.state.chainFlow?.recent || []).map((item) => ({ ...item, amountTao: null }))
+        recent: []
       }),
       errors: []
     };
@@ -374,66 +376,75 @@ function translateSubtensorEvent(method, fallback) {
   return { label: fallback, lifecycle: false };
 }
 
-function classifyFlowEvent(method) {
+function flowFromStakeEvent(method, data) {
   const name = String(method || '');
-  if (/unstake|remove/i.test(name)) return 'unstake';
-  if (/stake|add/i.test(name) && !/unstake|remove/i.test(name)) return 'stake';
-  return null;
-}
-
-function extractTaoAmount(value) {
-  const candidates = [];
-  collectBalanceCandidates(value, candidates);
-  const usable = candidates.filter((item) => Number.isFinite(item) && item > 0);
-  if (!usable.length) return null;
-  return usable.reduce((total, item) => total + item, 0);
-}
-
-function collectBalanceCandidates(value, out, key = '') {
-  if (value === null || value === undefined) return;
-  if (typeof value === 'number' || typeof value === 'bigint') {
-    const parsed = normalizeTaoNumber(Number(value), key);
-    if (parsed != null) out.push(parsed);
-    return;
+  if (/^StakeAdded$/i.test(name)) {
+    const netuid = eventNumber(data, 4, 'netuid');
+    if (isRootNetuid(netuid)) return null;
+    return {
+      flowType: 'stake',
+      amountTao: eventTao(data, 2, 'tao_amount'),
+      netuid
+    };
   }
-  if (typeof value === 'string') {
-    const parsed = parseTaoString(value, key);
-    if (parsed != null) out.push(parsed);
-    return;
+  if (/^StakeRemoved$/i.test(name)) {
+    const netuid = eventNumber(data, 4, 'netuid');
+    if (isRootNetuid(netuid)) return null;
+    return {
+      flowType: 'unstake',
+      amountTao: eventTao(data, 2, 'tao_amount'),
+      netuid
+    };
   }
-  if (Array.isArray(value)) {
-    for (const item of value) collectBalanceCandidates(item, out, key);
-    return;
-  }
-  if (typeof value === 'object') {
-    for (const [childKey, childValue] of Object.entries(value)) {
-      collectBalanceCandidates(childValue, out, childKey);
+  if (/^StakeSwapped$/i.test(name)) {
+    const origin = eventNumber(data, 2, 'origin_netuid');
+    const destination = eventNumber(data, 3, 'destination_netuid');
+    const amountTao = eventTao(data, 4, 'tao_amount');
+    if (isRootNetuid(origin) && !isRootNetuid(destination)) {
+      return { flowType: 'stake', amountTao, netuid: destination };
+    }
+    if (!isRootNetuid(origin) && isRootNetuid(destination)) {
+      return { flowType: 'unstake', amountTao, netuid: origin };
     }
   }
-}
-
-function parseTaoString(value, key = '') {
-  const text = value.trim();
-  if (!text || /[a-z0-9]{20,}/i.test(text.replace(/[.,_\-\s]/g, ''))) return null;
-  const match = text.replaceAll(',', '').match(/-?\d+(?:\.\d+)?/);
-  if (!match) return null;
-  const n = Number(match[0]);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  if (/rao/i.test(text) || /rao/i.test(key)) return n / 1e9;
-  if (/tao|τ/i.test(text) || /tao/i.test(key)) return n;
-  if (isAmountKey(key)) return normalizeTaoNumber(n, key);
   return null;
 }
 
-function normalizeTaoNumber(value, key = '') {
-  if (!Number.isFinite(value) || value <= 0) return null;
-  if (/netuid|uid|block|height|period|tempo|count|id/i.test(key)) return null;
-  if (!isAmountKey(key)) return null;
-  return value > 1e6 ? value / 1e9 : value;
+function eventTao(data, index, key) {
+  const raw = eventValue(data, index, key);
+  const n = parseNumeric(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n > 1e6 ? n / 1e9 : n;
 }
 
-function isAmountKey(key = '') {
-  return /amount|balance|tao|rao|stake|staked|unstake|unstaked|value/i.test(key);
+function eventNumber(data, index, key) {
+  const n = parseNumeric(eventValue(data, index, key));
+  return Number.isFinite(n) ? n : null;
+}
+
+function eventValue(data, index, key) {
+  if (Array.isArray(data)) return data[index];
+  if (data && typeof data === 'object') {
+    if (data[key] !== undefined) return data[key];
+    const snake = key.replace(/[A-Z]/g, (ch) => `_${ch.toLowerCase()}`);
+    if (data[snake] !== undefined) return data[snake];
+    return Object.values(data)[index];
+  }
+  return null;
+}
+
+function parseNumeric(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'bigint') return Number(value);
+  if (typeof value === 'object' && 'value' in value) return parseNumeric(value.value);
+  const text = String(value).replaceAll(',', '');
+  const match = text.match(/-?\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : null;
+}
+
+function isRootNetuid(netuid) {
+  return Number(netuid) === 0;
 }
 
 function sumAmounts(items) {
