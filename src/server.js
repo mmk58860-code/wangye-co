@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AppLogger } from './logger.js';
-import { DwellirPool, extractDwellirApiKey, normalizeEndpoint, testDwellirEndpoint } from './dwellirPool.js';
+import { DwellirPool, extractDwellirApiKey, normalizeEndpoint } from './dwellirPool.js';
 import { BittensorMonitor } from './bittensorMonitor.js';
 import { Notifier } from './notifier.js';
 import { checkPassword, publicConfig, requireAuth } from './auth.js';
@@ -75,16 +75,6 @@ app.put('/api/settings', requireAuth, (req, res) => {
   res.json(publicConfig(config));
 });
 
-app.post('/api/test-dwellir', requireAuth, async (req, res) => {
-  const input = String(req.body.endpoint || req.body.apiKey || '').trim();
-  if (!input || input.includes('******')) {
-    res.status(400).json({ error: '请先输入完整 API Key 或 endpoint' });
-    return;
-  }
-  const result = await testDwellirEndpoint(input, Number(config.apiPool.timeoutMs || 8000));
-  res.json(result);
-});
-
 app.post('/api/password', requireAuth, async (req, res) => {
   if (!req.body.password || String(req.body.password).length < 8) {
     res.status(400).json({ error: '密码至少 8 位' });
@@ -145,7 +135,6 @@ function sanitizeSettings(current, body) {
         name: key.name || `API ${index + 1}`,
         enabled: key.enabled !== false,
         endpoint,
-        displayInput: incoming || prior.displayInput || prior.endpoint || '',
         apiKey,
         perSecondLimit: clamp(key.perSecondLimit, 1, 10000, prior.perSecondLimit || 20)
       };

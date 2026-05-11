@@ -190,9 +190,7 @@ function apiRow(key, i) {
     <label>名称<input data-field="name" value="${escapeAttr(key.name || `API ${i + 1}`)}"></label>
     <label>Endpoint 或 API Key<input data-field="endpoint" value="${escapeAttr(key.endpoint || key.apiKey || '')}" placeholder="https://.../key 或 key"></label>
     <label>单 key RPS<input data-field="perSecondLimit" type="number" min="1" value="${key.perSecondLimit || 20}"></label>
-    <button type="button" data-test>测试</button>
     <button type="button" data-remove>删除</button>
-    <div class="api-test-result" data-test-result>${key.normalizedEndpoint ? `标准地址：${escapeHtml(key.normalizedEndpoint)}` : ''}</div>
   </div>`;
 }
 
@@ -202,28 +200,7 @@ $('#addApiBtn').addEventListener('click', () => {
 
 $('#apiList').addEventListener('click', (event) => {
   if (event.target.matches('[data-remove]')) event.target.closest('.api-row').remove();
-  if (event.target.matches('[data-test]')) testApiRow(event.target.closest('.api-row'));
 });
-
-async function testApiRow(row) {
-  const input = row.querySelector('[data-field="endpoint"]').value.trim();
-  const out = row.querySelector('[data-test-result]');
-  out.textContent = '正在测试 HTTP / WSS...';
-  try {
-    const result = await api('/api/test-dwellir', {
-      method: 'POST',
-      body: JSON.stringify({ endpoint: input })
-    });
-    out.innerHTML = [
-      `标准 HTTP：${escapeHtml(result.endpoints.http || '--')}`,
-      `标准 WSS：${escapeHtml(result.endpoints.ws || '--')}`,
-      `HTTP：${result.http?.ok ? '正常' : `失败 ${escapeHtml(result.http?.error || result.http?.status || '--')}`}`,
-      `WSS：${result.ws?.ok ? '正常' : `失败 ${escapeHtml(result.ws?.error || result.ws?.status || '--')}`}`
-    ].join('<br>');
-  } catch (error) {
-    out.textContent = `测试失败：${error.message}`;
-  }
-}
 
 $('#settingsForm').addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -236,7 +213,6 @@ $('#settingsForm').addEventListener('submit', async (event) => {
       enabled: row.querySelector('[data-field="enabled"]').checked,
       name: row.querySelector('[data-field="name"]').value.trim(),
       endpoint: apiKey ? `https://api-bittensor-mainnet.n.dwellir.com/${apiKey}` : input,
-      displayInput: input,
       apiKey,
       perSecondLimit: Number(row.querySelector('[data-field="perSecondLimit"]').value)
     };

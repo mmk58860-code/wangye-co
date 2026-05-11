@@ -1,4 +1,3 @@
-import { WebSocket } from 'ws';
 import { RateLimiter } from './rateLimiter.js';
 
 let rpcId = 1;
@@ -14,16 +13,6 @@ export function normalizeEndpoint(key) {
 
 export function toWsEndpoint(endpoint) {
   return endpoint.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
-}
-
-export function endpointPair(value) {
-  const apiKey = extractDwellirApiKey(value);
-  const http = normalizeEndpoint({ apiKey, endpoint: value });
-  return {
-    apiKey,
-    http,
-    ws: http ? toWsEndpoint(http) : ''
-  };
 }
 
 export function extractDwellirApiKey(value = '') {
@@ -107,62 +96,4 @@ export class DwellirPool {
     }
     throw lastError;
   }
-}
-
-export async function testDwellirEndpoint(value, timeoutMs = 8000) {
-  const endpoints = endpointPair(value);
-  const result = { endpoints, http: null, ws: null };
-  result.http = await testHttpEndpoint(endpoints.http, timeoutMs);
-  result.ws = await testWsEndpoint(endpoints.ws, timeoutMs);
-  return result;
-}
-
-async function testHttpEndpoint(endpoint, timeoutMs) {
-  if (!endpoint) return { ok: false, error: '没有可测试的 HTTP endpoint' };
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({ jsonrpc: '2.0', id: rpcId++, method: 'system_health', params: [] })
-    });
-    const text = await res.text();
-    let payload = null;
-    try {
-      payload = JSON.parse(text);
-    } catch {}
-    if (!res.ok) return { ok: false, status: res.status, error: text.slice(0, 300) };
-    if (payload?.error) return { ok: false, status: res.status, error: payload.error.message || JSON.stringify(payload.error) };
-    return { ok: true, status: res.status, result: payload?.result ?? text.slice(0, 300) };
-  } catch (error) {
-    return { ok: false, error: error.name === 'AbortError' ? 'HTTP 测试超时' : error.message };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function testWsEndpoint(endpoint, timeoutMs) {
-  if (!endpoint) return Promise.resolve({ ok: false, error: '没有可测试的 WSS endpoint' });
-  return new Promise((resolve) => {
-    const ws = new WebSocket(endpoint);
-    const timer = setTimeout(() => {
-      ws.close();
-      resolve({ ok: false, error: 'WSS 测试超时' });
-    }, timeoutMs);
-    let settled = false;
-    const done = (payload) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      try {
-        ws.close();
-      } catch {}
-      resolve(payload);
-    };
-    ws.on('open', () => done({ ok: true }));
-    ws.on('unexpected-response', (_req, res) => done({ ok: false, status: res.statusCode, error: `HTTP ${res.statusCode}` }));
-    ws.on('error', (error) => done({ ok: false, error: error.message }));
-  });
 }
