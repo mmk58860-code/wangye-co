@@ -4,7 +4,7 @@ import { dataDir, ensureDataDir } from './storage.js';
 import { bjIso } from './time.js';
 
 const logPath = path.join(dataDir, 'app.ndjson');
-const DAY_MS = 24 * 60 * 60 * 1000;
+const LOG_RETENTION_MS = 48 * 60 * 60 * 1000;
 
 export class AppLogger {
   constructor() {
@@ -38,7 +38,7 @@ export class AppLogger {
 
   list({ q = '', level = '', limit = 500 } = {}) {
     if (!fs.existsSync(logPath)) return [];
-    const cutoff = Date.now() - DAY_MS;
+    const cutoff = Date.now() - LOG_RETENTION_MS;
     return fs.readFileSync(logPath, 'utf8')
       .split('\n')
       .filter(Boolean)
@@ -53,7 +53,7 @@ export class AppLogger {
 
   prune() {
     if (!fs.existsSync(logPath)) return;
-    const cutoff = Date.now() - DAY_MS;
+    const cutoff = Date.now() - LOG_RETENTION_MS;
     const kept = fs.readFileSync(logPath, 'utf8')
       .split('\n')
       .filter(Boolean)
